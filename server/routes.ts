@@ -38,7 +38,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get quiz statistics
   app.get("/api/quiz/stats", async (req, res) => {
     try {
-      const totalQuestions = QuizParser.getTotalQuestionsCount();
+      const totalQuestions = await storage.getTotalQuestionsCount();
       res.json({ totalQuestions });
     } catch (error) {
       console.error("Error fetching quiz stats:", error);
@@ -55,6 +55,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error submitting quiz:", error);
       res.status(400).json({ message: "Invalid quiz submission data" });
+    }
+  });
+
+  // Admin routes
+  app.post("/api/admin/questions", async (req, res) => {
+    try {
+      const { question, options, correctAnswer, category } = req.body;
+      
+      if (!question || !options || options.length !== 4) {
+        return res.status(400).json({ error: 'Invalid question data' });
+      }
+      
+      const newQuestion = await storage.addQuestion({
+        question,
+        options,
+        correctAnswer: correctAnswer || 0,
+        category: category || 'innovatsion_iqtisodiyot'
+      });
+      
+      res.json(newQuestion);
+    } catch (error) {
+      console.error("Error adding question:", error);
+      res.status(500).json({ error: 'Failed to add question' });
+    }
+  });
+
+  app.post("/api/admin/import-csv", async (req, res) => {
+    try {
+      const { csvData } = req.body;
+      
+      if (!csvData) {
+        return res.status(400).json({ error: 'No CSV data provided' });
+      }
+      
+      const lines = csvData.trim().split('\n');
+      let imported = 0;
+      
+      for (const line of lines) {
+        if (line.trim()) {
+          const parts = line.split(',').map(part => part.trim().replace(/"/g, ''));
+          
+          if (parts.length >= 6) {
+            try {
+              const [question, option1, option2, option3, option4, correctAnswerStr, category] = parts;
+              const correctAnswer = parseInt(correctAnswerStr) || 0;
+              
+              await storage.addQuestion({
+                question,
+                options: [option1, option2, option3, option4],
+                correctAnswer,
+                category: category || 'innovatsion_iqtisodiyot'
+              });
+              
+              imported++;
+            } catch (error) {
+              console.log("Skipping invalid line:", line);
+            }
+          }
+        }
+      }
+      
+      res.json({ imported });
+    } catch (error) {
+      console.error("Error importing CSV:", error);
+      res.status(500).json({ error: 'Failed to import CSV' });
+    }
+  });
+
+  app.post("/api/admin/populate-questions", async (req, res) => {
+    try {
+      const imported = await storage.populateQuestionsFromParser();
+      res.json({ imported });
+    } catch (error) {
+      console.error("Error populating questions:", error);
+      res.status(500).json({ error: 'Failed to populate questions' });
     }
   });
 

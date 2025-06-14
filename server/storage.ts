@@ -8,6 +8,10 @@ export interface IStorage {
   getQuestionById(id: number): Promise<Question | undefined>;
   createQuizSession(session: InsertQuizSession): Promise<QuizSession>;
   getQuizSessionById(id: number): Promise<QuizSession | undefined>;
+  getTotalQuestionsCount(): Promise<number>;
+  addQuestion(question: InsertQuestion): Promise<Question>;
+  populateQuestionsFromParser(): Promise<number>;
+  getRandomQuestions(count: number): Promise<Question[]>;
 }
 
 export class DatabaseStorage implements IStorage {
