@@ -1,4 +1,5 @@
 import { Question, QuizSession, type InsertQuestion, type InsertQuizSession } from "@shared/schema";
+import { QuizParser } from "./services/quiz-parser";
 
 export interface IStorage {
   getAllQuestions(): Promise<Question[]>;
@@ -24,7 +25,6 @@ export class MemStorage implements IStorage {
   }
 
   private initializeQuestions() {
-    const { QuizParser } = require('./services/quiz-parser');
     const questionData = QuizParser.getAllQuestions();
     
     questionData.forEach((questionData: Omit<Question, 'id'>) => {
@@ -45,8 +45,12 @@ export class MemStorage implements IStorage {
   async createQuizSession(insertSession: InsertQuizSession): Promise<QuizSession> {
     const id = this.currentSessionId++;
     const session: QuizSession = {
-      ...insertSession,
       id,
+      userId: insertSession.userId ?? null,
+      questionsUsed: insertSession.questionsUsed,
+      userAnswers: insertSession.userAnswers,
+      score: insertSession.score,
+      totalQuestions: insertSession.totalQuestions,
       completedAt: new Date(),
     };
     this.quizSessions.set(id, session);
