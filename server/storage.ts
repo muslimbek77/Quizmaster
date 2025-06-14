@@ -51,6 +51,47 @@ export class DatabaseStorage implements IStorage {
     return session || undefined;
   }
 
+  async getTotalQuestionsCount(): Promise<number> {
+    const result = await db.select().from(questions);
+    return result.length;
+  }
+
+  async addQuestion(question: InsertQuestion): Promise<Question> {
+    const [newQuestion] = await db.insert(questions).values(question).returning();
+    return newQuestion;
+  }
+
+  async getRandomQuestions(count: number): Promise<Question[]> {
+    const allQuestions = await db.select().from(questions);
+    
+    // Shuffle questions and return the requested count
+    const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, Math.min(count, allQuestions.length));
+  }
+
+  async populateQuestionsFromParser(): Promise<number> {
+    const parserQuestions = QuizParser.getAllQuestions();
+    let imported = 0;
+    
+    for (const question of parserQuestions) {
+      try {
+        // Check if question already exists
+        const existing = await db.select().from(questions)
+          .where(eq(questions.question, question.question))
+          .limit(1);
+        
+        if (existing.length === 0) {
+          await db.insert(questions).values(question);
+          imported++;
+        }
+      } catch (error) {
+        console.log('Error adding question:', error);
+      }
+    }
+    
+    return imported;
+  }
+
   private async populateQuestions(): Promise<void> {
     const questionData = QuizParser.getAllQuestions();
     

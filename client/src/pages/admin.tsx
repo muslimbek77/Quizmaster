@@ -45,7 +45,7 @@ export default function Admin() {
   // Add single question mutation
   const addQuestionMutation = useMutation({
     mutationFn: (data: QuestionFormData) => 
-      apiRequest('/api/admin/questions', {
+      fetch('/api/admin/questions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -54,7 +54,7 @@ export default function Admin() {
           correctAnswer: data.correctAnswer,
           category: data.category
         })
-      }),
+      }).then(res => res.json()),
     onSuccess: () => {
       toast({ title: 'Savol muvaffaqiyatli qo\'shildi!' });
       setFormData({
@@ -80,11 +80,11 @@ export default function Admin() {
   // Import CSV mutation
   const importCsvMutation = useMutation({
     mutationFn: (csvContent: string) => 
-      apiRequest('/api/admin/import-csv', {
+      fetch('/api/admin/import-csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csvData: csvContent })
-      }),
+      }).then(res => res.json()),
     onSuccess: (data) => {
       toast({ 
         title: 'CSV muvaffaqiyatli import qilindi!', 
@@ -104,7 +104,9 @@ export default function Admin() {
 
   // Populate from parser mutation
   const populateFromParserMutation = useMutation({
-    mutationFn: () => apiRequest('/api/admin/populate-questions', { method: 'POST' }),
+    mutationFn: () => 
+      fetch('/api/admin/populate-questions', { method: 'POST' })
+        .then(res => res.json()),
     onSuccess: (data) => {
       toast({ 
         title: 'Savollar muvaffaqiyatli yuklandi!', 
