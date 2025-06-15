@@ -20,7 +20,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/quiz/questions", async (req, res) => {
     try {
       const count = parseInt(req.query.count as string) || 50;
-      const randomQuestions = QuizParser.getRandomQuestions(count);
+      const randomQuestions = await storage.getRandomQuestions(count);
       
       // Add IDs for the response
       const questionsWithIds = randomQuestions.map((q, index) => ({

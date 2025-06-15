@@ -66,7 +66,36 @@ export class DatabaseStorage implements IStorage {
     
     // Shuffle questions and return the requested count
     const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, Math.min(count, allQuestions.length));
+    const selectedQuestions = shuffled.slice(0, Math.min(count, allQuestions.length));
+    
+    // Randomize answer positions for each question
+    const randomizedQuestions = selectedQuestions.map(question => {
+      const options = [...question.options];
+      const correctAnswer = question.correctAnswer;
+      
+      // Create array with indices to shuffle
+      const indices = [0, 1, 2, 3];
+      
+      // Fisher-Yates shuffle for better randomization
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      
+      // Rearrange options based on shuffled indices
+      const shuffledOptions = indices.map(index => options[index]);
+      
+      // Find new position of correct answer
+      const newCorrectAnswer = indices.indexOf(correctAnswer);
+      
+      return {
+        ...question,
+        options: shuffledOptions,
+        correctAnswer: newCorrectAnswer
+      };
+    });
+    
+    return randomizedQuestions;
   }
 
   async populateQuestionsFromParser(): Promise<number> {
