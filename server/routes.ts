@@ -133,6 +133,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get paginated questions for admin
+  app.get("/api/admin/questions", async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      
+      const result = await storage.getQuestionsPaginated(page, limit);
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching questions:", error);
+      res.status(500).json({ error: 'Failed to fetch questions' });
+    }
+  });
+
+  // Update question
+  app.put("/api/admin/questions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { question, options, correctAnswer, category } = req.body;
+      
+      if (!question || !options || options.length !== 4) {
+        return res.status(400).json({ error: 'Invalid question data' });
+      }
+      
+      const updatedQuestion = await storage.updateQuestion(id, {
+        question,
+        options,
+        correctAnswer: correctAnswer || 0,
+        category: category || 'innovatsion_iqtisodiyot'
+      });
+      
+      res.json(updatedQuestion);
+    } catch (error) {
+      console.error("Error updating question:", error);
+      res.status(500).json({ error: 'Failed to update question' });
+    }
+  });
+
+  // Delete question
+  app.delete("/api/admin/questions/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteQuestion(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      res.status(500).json({ error: 'Failed to delete question' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

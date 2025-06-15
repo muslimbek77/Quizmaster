@@ -12,6 +12,9 @@ export interface IStorage {
   addQuestion(question: InsertQuestion): Promise<Question>;
   populateQuestionsFromParser(): Promise<number>;
   getRandomQuestions(count: number): Promise<Question[]>;
+  updateQuestion(id: number, question: InsertQuestion): Promise<Question>;
+  deleteQuestion(id: number): Promise<void>;
+  getQuestionsPaginated(page: number, limit: number): Promise<{ questions: Question[], total: number }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -119,6 +122,56 @@ export class DatabaseStorage implements IStorage {
     }
     
     return imported;
+  }
+
+  async updateQuestion(id: number, questionData: InsertQuestion): Promise<Question> {
+    const [updatedQuestion] = await db
+      .update(questions)
+      .set({
+        question: questionData.question,
+        options: questionData.options,
+        correctAnswer: questionData.correctAnswer,
+        category: questionData.category,
+      })
+      .where(eq(questions.id, id))
+      .returning();
+    
+    if (!updatedQuestion) {
+      throw new Error('Question not found');
+    }
+    
+    return updatedQuestion;
+  }
+
+  async deleteQuestion(id: number): Promise<void> {
+    const result = await db
+      .delete(questions)
+      .where(eq(questions.id, id))
+      .returning();
+    
+    if (result.length === 0) {
+      throw new Error('Question not found');
+    }
+  }
+
+  async getQuestionsPaginated(page: number, limit: number): Promise<{ questions: Question[], total: number }> {
+    const offset = (page - 1) * limit;
+    
+    // Get total count
+    const totalResult = await db.select().from(questions);
+    const total = totalResult.length;
+    
+    // Get paginated results
+    const paginatedQuestions = await db
+      .select()
+      .from(questions)
+      .limit(limit)
+      .offset(offset);
+    
+    return {
+      questions: paginatedQuestions,
+      total
+    };
   }
 
   private async populateQuestions(): Promise<void> {
