@@ -94,7 +94,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const line of lines) {
         if (line.trim()) {
-          const parts = line.split(',').map(part => part.trim().replace(/"/g, ''));
+          const parts = line.split(',').map((part: string) => part.trim().replace(/"/g, ''));
           
           if (parts.length >= 6) {
             try {

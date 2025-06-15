@@ -6,9 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, Plus, FileText, Database } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Upload, Plus, FileText, Database, Edit, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+
+interface Question {
+  id: number;
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  category: string;
+}
 
 interface QuestionFormData {
   question: string;
@@ -23,6 +35,9 @@ interface QuestionFormData {
 export default function Admin() {
   const [csvData, setCsvData] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [formData, setFormData] = useState<QuestionFormData>({
     question: '',
     option1: '',
@@ -35,6 +50,7 @@ export default function Admin() {
 
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const questionsPerPage = 10;
 
   // Get total questions count
   const { data: stats } = useQuery({
@@ -42,35 +58,84 @@ export default function Admin() {
     queryFn: ({ queryKey }) => fetch(queryKey[0]).then(res => res.json())
   });
 
+  // Get paginated questions
+  const { data: questionsData, isLoading } = useQuery({
+    queryKey: ['/api/admin/questions', currentPage],
+    queryFn: ({ queryKey }) => 
+      fetch(`${queryKey[0]}?page=${queryKey[1]}&limit=${questionsPerPage}`)
+        .then(res => res.json())
+  });
+
+  const questions = questionsData?.questions || [];
+  const totalQuestions = questionsData?.total || 0;
+  const totalPages = Math.ceil(totalQuestions / questionsPerPage);
+
   // Add single question mutation
   const addQuestionMutation = useMutation({
     mutationFn: (data: QuestionFormData) => 
-      fetch('/api/admin/questions', {
+      apiRequest('/api/admin/questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question: data.question,
           options: [data.option1, data.option2, data.option3, data.option4],
           correctAnswer: data.correctAnswer,
           category: data.category
         })
-      }).then(res => res.json()),
+      }),
     onSuccess: () => {
       toast({ title: 'Savol muvaffaqiyatli qo\'shildi!' });
-      setFormData({
-        question: '',
-        option1: '',
-        option2: '',
-        option3: '',
-        option4: '',
-        correctAnswer: 0,
-        category: 'innovatsion_iqtisodiyot'
-      });
+      resetForm();
       queryClient.invalidateQueries({ queryKey: ['/api/quiz/stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/questions'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({ 
         title: 'Xatolik yuz berdi', 
+        description: error.message,
+        variant: 'destructive' 
+      });
+    }
+  });
+
+  // Update question mutation
+  const updateQuestionMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number, data: QuestionFormData }) => 
+      apiRequest(`/api/admin/questions/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          question: data.question,
+          options: [data.option1, data.option2, data.option3, data.option4],
+          correctAnswer: data.correctAnswer,
+          category: data.category
+        })
+      }),
+    onSuccess: () => {
+      toast({ title: 'Savol muvaffaqiyatli yangilandi!' });
+      setIsEditDialogOpen(false);
+      setEditingQuestion(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/questions'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'Yangilash xatoligi', 
+        description: error.message,
+        variant: 'destructive' 
+      });
+    }
+  });
+
+  // Delete question mutation
+  const deleteQuestionMutation = useMutation({
+    mutationFn: (id: number) => 
+      apiRequest(`/api/admin/questions/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast({ title: 'Savol muvaffaqiyatli o\'chirildi!' });
+      queryClient.invalidateQueries({ queryKey: ['/api/quiz/stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/questions'] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: 'O\'chirish xatoligi', 
         description: error.message,
         variant: 'destructive' 
       });
@@ -80,20 +145,20 @@ export default function Admin() {
   // Import CSV mutation
   const importCsvMutation = useMutation({
     mutationFn: (csvContent: string) => 
-      fetch('/api/admin/import-csv', {
+      apiRequest('/api/admin/import-csv', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ csvData: csvContent })
-      }).then(res => res.json()),
-    onSuccess: (data) => {
+      }),
+    onSuccess: (data: any) => {
       toast({ 
         title: 'CSV muvaffaqiyatli import qilindi!', 
         description: `${data.imported} ta savol qo'shildi` 
       });
       setCsvData('');
       queryClient.invalidateQueries({ queryKey: ['/api/quiz/stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/questions'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({ 
         title: 'Import xatoligi', 
         description: error.message,
@@ -105,16 +170,16 @@ export default function Admin() {
   // Populate from parser mutation
   const populateFromParserMutation = useMutation({
     mutationFn: () => 
-      fetch('/api/admin/populate-questions', { method: 'POST' })
-        .then(res => res.json()),
-    onSuccess: (data) => {
+      apiRequest('/api/admin/populate-questions', { method: 'POST' }),
+    onSuccess: (data: any) => {
       toast({ 
         title: 'Savollar muvaffaqiyatli yuklandi!', 
         description: `${data.imported} ta savol qo'shildi` 
       });
       queryClient.invalidateQueries({ queryKey: ['/api/quiz/stats'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/questions'] });
     },
-    onError: (error) => {
+    onError: (error: any) => {
       toast({ 
         title: 'Yuklash xatoligi', 
         description: error.message,
@@ -122,6 +187,32 @@ export default function Admin() {
       });
     }
   });
+
+  const resetForm = () => {
+    setFormData({
+      question: '',
+      option1: '',
+      option2: '',
+      option3: '',
+      option4: '',
+      correctAnswer: 0,
+      category: 'innovatsion_iqtisodiyot'
+    });
+  };
+
+  const handleEdit = (question: Question) => {
+    setEditingQuestion(question);
+    setFormData({
+      question: question.question,
+      option1: question.options[0] || '',
+      option2: question.options[1] || '',
+      option3: question.options[2] || '',
+      option4: question.options[3] || '',
+      correctAnswer: question.correctAnswer,
+      category: question.category
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,7 +224,12 @@ export default function Admin() {
       });
       return;
     }
-    addQuestionMutation.mutate(formData);
+
+    if (editingQuestion) {
+      updateQuestionMutation.mutate({ id: editingQuestion.id, data: formData });
+    } else {
+      addQuestionMutation.mutate(formData);
+    }
   };
 
   const handleCsvImport = () => {
@@ -162,9 +258,13 @@ export default function Admin() {
     }
   };
 
+  const getCorrectAnswerLetter = (index: number) => {
+    return ['A', 'B', 'C', 'D'][index] || 'A';
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Panel</h1>
           <p className="text-gray-600">Savollarni boshqarish va import qilish</p>
@@ -179,7 +279,7 @@ export default function Admin() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center p-4 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
                   {stats?.totalQuestions || 0}
@@ -196,16 +296,141 @@ export default function Admin() {
                 </div>
                 <div className="text-sm text-gray-600">600 tadan</div>
               </div>
+              <div className="text-center p-4 bg-orange-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  {totalPages}
+                </div>
+                <div className="text-sm text-gray-600">Sahifalar</div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="import" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs defaultValue="manage" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="manage">Savollarni boshqarish</TabsTrigger>
             <TabsTrigger value="import">CSV Import</TabsTrigger>
             <TabsTrigger value="manual">Manual qo'shish</TabsTrigger>
             <TabsTrigger value="populate">Parser dan yuklash</TabsTrigger>
           </TabsList>
+
+          {/* Manage Questions Tab */}
+          <TabsContent value="manage">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Edit className="w-5 h-5" />
+                  Savollarni boshqarish
+                </CardTitle>
+                <CardDescription>
+                  Mavjud savollarni ko'rish, tahrirlash va o'chirish
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isLoading ? (
+                  <div className="text-center py-8">Yuklanmoqda...</div>
+                ) : questions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">Savollar topilmadi</div>
+                ) : (
+                  <div className="space-y-4">
+                    {questions.map((question: Question, index: number) => (
+                      <div key={question.id} className="border rounded-lg p-4 bg-white">
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline">#{question.id}</Badge>
+                              <Badge variant="secondary">{question.category}</Badge>
+                              <Badge variant="default">
+                                To'g'ri javob: {getCorrectAnswerLetter(question.correctAnswer)}
+                              </Badge>
+                            </div>
+                            <h3 className="font-medium text-gray-900 mb-3">
+                              {question.question}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {question.options.map((option, optIndex) => (
+                                <div
+                                  key={optIndex}
+                                  className={`p-2 rounded text-sm ${
+                                    optIndex === question.correctAnswer
+                                      ? 'bg-green-100 border border-green-300'
+                                      : 'bg-gray-50'
+                                  }`}
+                                >
+                                  <span className="font-medium">
+                                    {getCorrectAnswerLetter(optIndex)}:
+                                  </span>{' '}
+                                  {option}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(question)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Savolni o'chirish</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Bu savolni o'chirishni xohlaysizmi? Bu amal bekor qilib bo'lmaydi.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Bekor qilish</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteQuestionMutation.mutate(question.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    O'chirish
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                      <div className="flex justify-center items-center gap-2 mt-6">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </Button>
+                        <span className="px-3 py-1 text-sm">
+                          {currentPage} / {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                          disabled={currentPage === totalPages}
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* CSV Import Tab */}
           <TabsContent value="import">
@@ -280,56 +505,75 @@ export default function Admin() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="option1">1-variant (To'g'ri javob)</Label>
+                      <Label htmlFor="option1">A-variant</Label>
                       <Input
                         id="option1"
                         value={formData.option1}
                         onChange={(e) => setFormData({...formData, option1: e.target.value})}
-                        placeholder="To'g'ri javob..."
+                        placeholder="Birinchi variant..."
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="option2">2-variant</Label>
+                      <Label htmlFor="option2">B-variant</Label>
                       <Input
                         id="option2"
                         value={formData.option2}
                         onChange={(e) => setFormData({...formData, option2: e.target.value})}
-                        placeholder="Noto'g'ri javob..."
+                        placeholder="Ikkinchi variant..."
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="option3">3-variant</Label>
+                      <Label htmlFor="option3">C-variant</Label>
                       <Input
                         id="option3"
                         value={formData.option3}
                         onChange={(e) => setFormData({...formData, option3: e.target.value})}
-                        placeholder="Noto'g'ri javob..."
+                        placeholder="Uchinchi variant..."
                         className="mt-1"
                       />
                     </div>
                     <div>
-                      <Label htmlFor="option4">4-variant</Label>
+                      <Label htmlFor="option4">D-variant</Label>
                       <Input
                         id="option4"
                         value={formData.option4}
                         onChange={(e) => setFormData({...formData, option4: e.target.value})}
-                        placeholder="Noto'g'ri javob..."
+                        placeholder="To'rtinchi variant..."
                         className="mt-1"
                       />
                     </div>
                   </div>
 
-                  <div>
-                    <Label htmlFor="category">Kategoriya</Label>
-                    <Input
-                      id="category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({...formData, category: e.target.value})}
-                      placeholder="innovatsion_iqtisodiyot"
-                      className="mt-1"
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="correctAnswer">To'g'ri javob</Label>
+                      <Select 
+                        value={formData.correctAnswer.toString()} 
+                        onValueChange={(value) => setFormData({...formData, correctAnswer: parseInt(value)})}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="To'g'ri javobni tanlang" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">A - {formData.option1 || 'Birinchi variant'}</SelectItem>
+                          <SelectItem value="1">B - {formData.option2 || 'Ikkinchi variant'}</SelectItem>
+                          <SelectItem value="2">C - {formData.option3 || 'Uchinchi variant'}</SelectItem>
+                          <SelectItem value="3">D - {formData.option4 || 'To\'rtinchi variant'}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="category">Kategoriya</Label>
+                      <Input
+                        id="category"
+                        value={formData.category}
+                        onChange={(e) => setFormData({...formData, category: e.target.value})}
+                        placeholder="innovatsion_iqtisodiyot"
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
 
                   <Button 
@@ -374,6 +618,121 @@ export default function Admin() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Edit Question Dialog */}
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Savolni tahrirlash</DialogTitle>
+              <DialogDescription>
+                Savol ma'lumotlarini o'zgartiring
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="edit-question">Savol</Label>
+                <Textarea
+                  id="edit-question"
+                  value={formData.question}
+                  onChange={(e) => setFormData({...formData, question: e.target.value})}
+                  placeholder="Savolni kiriting..."
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-option1">A-variant</Label>
+                  <Input
+                    id="edit-option1"
+                    value={formData.option1}
+                    onChange={(e) => setFormData({...formData, option1: e.target.value})}
+                    placeholder="Birinchi variant..."
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-option2">B-variant</Label>
+                  <Input
+                    id="edit-option2"
+                    value={formData.option2}
+                    onChange={(e) => setFormData({...formData, option2: e.target.value})}
+                    placeholder="Ikkinchi variant..."
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-option3">C-variant</Label>
+                  <Input
+                    id="edit-option3"
+                    value={formData.option3}
+                    onChange={(e) => setFormData({...formData, option3: e.target.value})}
+                    placeholder="Uchinchi variant..."
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-option4">D-variant</Label>
+                  <Input
+                    id="edit-option4"
+                    value={formData.option4}
+                    onChange={(e) => setFormData({...formData, option4: e.target.value})}
+                    placeholder="To'rtinchi variant..."
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-correctAnswer">To'g'ri javob</Label>
+                  <Select 
+                    value={formData.correctAnswer.toString()} 
+                    onValueChange={(value) => setFormData({...formData, correctAnswer: parseInt(value)})}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue placeholder="To'g'ri javobni tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">A - {formData.option1 || 'Birinchi variant'}</SelectItem>
+                      <SelectItem value="1">B - {formData.option2 || 'Ikkinchi variant'}</SelectItem>
+                      <SelectItem value="2">C - {formData.option3 || 'Uchinchi variant'}</SelectItem>
+                      <SelectItem value="3">D - {formData.option4 || 'To\'rtinchi variant'}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="edit-category">Kategoriya</Label>
+                  <Input
+                    id="edit-category"
+                    value={formData.category}
+                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                    placeholder="innovatsion_iqtisodiyot"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            </form>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsEditDialogOpen(false);
+                  setEditingQuestion(null);
+                }}
+              >
+                Bekor qilish
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={updateQuestionMutation.isPending}
+              >
+                {updateQuestionMutation.isPending ? 'Yangilanmoqda...' : 'Saqlash'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
